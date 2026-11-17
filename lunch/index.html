@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>점심 메뉴 당번 뽑기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: illustrated hero, one big draw stage (shared result), roster of avatar toggles, recent history */
+:root {
+  --bg: #FBF3E8;
+  --surface: #FFFFFF;
+  --fg: #2A211B;
+  --muted: #7A6D63;
+  --line: #EBDDCB;
+  --accent: #E5532D;
+  --accent-soft: #FFE3D6;
+  --on-accent: #FFFFFF;
+  --gold: #F2B531;
+  --off-bg: #F1E8DB;
+  --hero-a: #FFD08A;
+  --hero-b: #FF9E6B;
+  --stage: #FFF8EE;
+  --font-display: "Space Grotesk", "IBM Plex Sans KR", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans KR", "Malgun Gothic", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17120F; --surface: #221B16; --fg: #F6EBDD; --muted: #B3A394; --line: #3A2E26;
+    --accent: #FF7A52; --accent-soft: #3B2219; --on-accent: #1B0F0A; --gold: #F5C04A;
+    --off-bg: #1C1612; --hero-a: #5A3A1E; --hero-b: #7A3A22; --stage: #1F1814;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17120F; --surface: #221B16; --fg: #F6EBDD; --muted: #B3A394; --line: #3A2E26;
+  --accent: #FF7A52; --accent-soft: #3B2219; --on-accent: #1B0F0A; --gold: #F5C04A;
+  --off-bg: #1C1612; --hero-a: #5A3A1E; --hero-b: #7A3A22; --stage: #1F1814;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 56px;
+}
+.app { max-width: 600px; margin: 0 auto; display: grid; gap: 22px; }
+h1 { font-family: var(--font-display); font-size: 26px; font-weight: 700; margin: 0; letter-spacing: -0.02em; line-height: 1.15; }
+h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0; letter-spacing: .04em; }
+.sub { color: var(--muted); font-size: 14px; }
+
+.hero { position: relative; overflow: hidden; border-radius: 22px; padding: 22px 20px 0; background: linear-gradient(135deg, var(--hero-a), var(--hero-b)); color: #2A1608; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: end; gap: 4px; min-height: 170px; }
+:root[data-theme="dark"] .hero { color: #FFEBD6; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .hero { color: #FFEBD6; } }
+.hero .txt { display: grid; gap: 8px; padding-bottom: 22px; align-self: center; }
+.hero .badge { justify-self: start; font-size: 12px; font-weight: 700; letter-spacing: .08em; background: rgba(255,255,255,.55); border-radius: 999px; padding: 4px 10px; color: #7A2E10; }
+:root[data-theme="dark"] .hero .badge { background: rgba(0,0,0,.3); color: #FFC9A8; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .hero .badge { background: rgba(0,0,0,.3); color: #FFC9A8; } }
+.hero .date { font-size: 14px; opacity: .85; }
+.hero svg.scene { width: 100%; height: auto; display: block; max-height: 190px; }
+@media (max-width: 480px) { .hero { grid-template-columns: 1fr; } .hero svg.scene { max-height: 140px; } .hero .txt { padding-bottom: 8px; } }
+
+.stage { position: relative; overflow: hidden; background: var(--stage); border: 1px solid var(--line); border-radius: 22px; padding: 26px 20px 24px; display: grid; gap: 14px; justify-items: center; text-align: center; }
+.label { font-size: 13px; color: var(--muted); }
+.avatar-lg { width: 132px; height: 132px; position: relative; }
+.avatar-lg svg { width: 100%; height: 100%; display: block; border-radius: 50%; }
+.avatar-lg .crown { position: absolute; width: 64px; left: 34px; top: -30px; }
+.avatar-lg.idle svg { filter: grayscale(.9); opacity: .55; }
+.avatar-lg.spin svg { animation: wob .25s infinite alternate; }
+.avatar-lg.done svg { animation: pop .45s ease-out; box-shadow: 0 0 0 5px var(--gold); }
+@keyframes wob { from { transform: rotate(-4deg) scale(.97); } to { transform: rotate(4deg) scale(1.03); } }
+@keyframes pop { from { transform: scale(.7); } to { transform: scale(1); } }
+.winner { font-family: var(--font-display); font-size: clamp(34px, 11vw, 48px); font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; min-height: 1.1em; overflow-wrap: anywhere; }
+.winner.idle { color: var(--muted); font-size: clamp(20px, 6vw, 26px); font-weight: 500; }
+.winner.spin { color: var(--muted); }
+.winner.done { color: var(--accent); }
+.btn { font: inherit; cursor: pointer; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); padding: 10px 16px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 18px; padding: 14px 40px; box-shadow: 0 4px 0 rgba(0,0,0,.18); }
+.btn.primary:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,.18); }
+.btn:disabled { opacity: .55; cursor: default; box-shadow: none; }
+.btn:focus-visible, .person:focus-visible, .link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.msg { font-size: 14px; color: var(--muted); min-height: 1.3em; }
+.msg.warn { color: var(--accent); }
+.confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.confetti i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation: fall linear forwards; }
+@keyframes fall { to { transform: translateY(420px) rotate(540deg); opacity: .9; } }
+
+.roster-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.roster-head .num { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.roster { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+@media (max-width: 420px) { .roster { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.person { width: 100%; font: inherit; cursor: pointer; display: grid; justify-items: center; gap: 6px; padding: 12px 8px 10px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); position: relative; }
+.person .av { width: 64px; height: 64px; }
+.person .av svg { width: 100%; height: 100%; display: block; border-radius: 50%; }
+.person .nm { font-weight: 600; }
+.person .st { font-size: 12px; color: var(--muted); }
+.person[aria-pressed="true"] { background: var(--off-bg); border-style: dashed; color: var(--muted); }
+.person[aria-pressed="true"] .av svg { filter: grayscale(1); opacity: .5; }
+.person[aria-pressed="true"] .nm { text-decoration: line-through; }
+.person[aria-pressed="true"] .st { color: var(--accent); font-weight: 600; }
+.person.win { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+.person:disabled { cursor: default; }
+.quick { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
+.link { font: inherit; font-size: 13px; color: var(--muted); background: none; border: 0; padding: 4px 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.link:disabled { opacity: .4; cursor: default; }
+
+.history ol { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.history li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-variant-numeric: tabular-nums; }
+.history li .av { width: 30px; height: 30px; flex: 0 0 auto; }
+.history li .av svg { width: 100%; height: 100%; display: block; border-radius: 50%; }
+.history li .nm { font-weight: 600; flex: 1; min-width: 0; }
+.history li .dt { color: var(--muted); font-size: 13px; }
+.history .empty { color: var(--muted); font-size: 14px; margin-top: 8px; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .avatar-lg.spin svg, .avatar-lg.done svg, .confetti i { animation: none; } }
+</style>
+
+</head>
+<body>
+<main class="app">
+  <header class="hero">
+    <div class="txt">
+      <span class="badge">FRIDAY LUNCH</span>
+      <h1>오늘의 점심 메뉴<br>당번은 누구?</h1>
+      <div class="date" id="today"></div>
+    </div>
+    <svg class="scene" viewBox="0 0 260 170" aria-hidden="true">
+      <ellipse cx="130" cy="156" rx="124" ry="10" fill="#000" opacity=".12"/>
+      <!-- onigiri -->
+      <g transform="translate(14 78)">
+        <path d="M34 4c10 0 34 46 34 62 0 8-6 12-14 12H14C6 78 0 74 0 66 0 50 24 4 34 4z" fill="#FFFDF8"/>
+        <rect x="14" y="44" width="40" height="34" rx="4" fill="#25302B"/>
+        <circle cx="26" cy="30" r="2.4" fill="#C9C2B4"/><circle cx="40" cy="22" r="2.4" fill="#C9C2B4"/><circle cx="34" cy="36" r="2.4" fill="#C9C2B4"/>
+      </g>
+      <!-- ramen bowl -->
+      <g transform="translate(70 22)">
+        <path d="M54 6c-6 8 6 12 0 20M72 2c-6 8 6 12 0 20M90 6c-6 8 6 12 0 20" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" fill="none" opacity=".75"/>
+        <path d="M14 70c0 34 24 58 56 58s56-24 56-58z" fill="#D8412A"/>
+        <path d="M22 94c30 10 70 10 96 0" stroke="#FFD9C9" stroke-width="4" fill="none" opacity=".7"/>
+        <ellipse cx="70" cy="70" rx="58" ry="14" fill="#F7C46A"/>
+        <path d="M24 70c10-8 14 6 24-2s14 6 24-2 14 6 24-2 12 4 22-2" stroke="#E39A2E" stroke-width="3" fill="none"/>
+        <circle cx="52" cy="66" r="12" fill="#FFFDF8"/><circle cx="52" cy="66" r="6" fill="#F2A71B"/>
+        <rect x="76" y="58" width="22" height="12" rx="6" fill="#8CC76B"/>
+        <circle cx="100" cy="68" r="5" fill="#E8654B"/>
+        <path d="M96 4l44 58M106 0l44 58" stroke="#8B5A2B" stroke-width="4" stroke-linecap="round"/>
+      </g>
+      <!-- burger -->
+      <g transform="translate(196 84)">
+        <path d="M4 30c0-20 14-28 30-28s30 8 30 28z" fill="#E9A24B"/>
+        <circle cx="22" cy="14" r="1.6" fill="#FFF3D6"/><circle cx="34" cy="10" r="1.6" fill="#FFF3D6"/><circle cx="46" cy="15" r="1.6" fill="#FFF3D6"/>
+        <path d="M2 34c6 6 10-4 16 2s10-4 16 2 10-4 16 2 10-4 14 0v-6H2z" fill="#7BC15A"/>
+        <rect x="4" y="36" width="60" height="9" rx="4" fill="#6B3A22"/>
+        <path d="M6 45h56l-6 8H12z" fill="#F7C531"/>
+        <path d="M4 54h60c0 8-6 12-14 12H18C10 66 4 62 4 54z" fill="#E9A24B"/>
+      </g>
+    </svg>
+  </header>
+
+  <section class="stage" id="stage" aria-live="polite">
+    <div class="label" id="label">이번 주 금요일 당번은</div>
+    <div class="avatar-lg idle" id="bigAv"></div>
+    <div class="winner idle" id="winner">아직 안 뽑았어요</div>
+    <button class="btn primary" type="button" id="draw" disabled>뽑기</button>
+    <div class="msg" id="msg"></div>
+    <div class="confetti" id="confetti" aria-hidden="true"></div>
+  </section>
+
+  <section aria-labelledby="rh">
+    <div class="roster-head">
+      <h2 id="rh">오늘 참여</h2>
+      <span class="num" id="num"></span>
+    </div>
+    <ul class="roster" id="roster"></ul>
+    <div class="quick">
+      <span class="sub" id="rosterHint">휴가나 연차인 사람을 눌러 제외하세요. 팀 모두에게 바로 보여요.</span>
+      <button class="link" type="button" id="all">모두 참여</button>
+    </div>
+  </section>
+
+  <section class="history" aria-labelledby="hh">
+    <h2 id="hh">지난 당번</h2>
+    <ol id="hist"></ol>
+    <div class="empty" id="histEmpty">아직 기록이 없어요.</div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var PEOPLE = ["유승호", "제갈선희", "정연겸", "이수호", "이나경", "한다경"];
+  var SKIN = ["#F6D2B5", "#EBC09C", "#F8DCC4", "#E8B98F", "#F3CBAA", "#EEC6A4"];
+  var HAIR = ["#2B2118", "#5B3A29", "#1F1F2E", "#8A4B2A", "#3A2A4A", "#2E2A26"];
+  var BG = ["#FFD9A8", "#BFE3D0", "#C9D8F5", "#F9C6C0", "#E4D2F2", "#FBE6A2"];
+  var SHIRT = ["#E5532D", "#3E8E6B", "#3F67C9", "#C94F7C", "#7B4FC9", "#D79A1E"];
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- avatars (inline SVG, no external images) ----
+  function hairBack(i, c) {
+    // 4 이나경: chin-length bob, 5 한다경: long hair past the shoulders
+    if (i === 4) return '<path d="M24 60c-4-26 6-44 26-44s30 18 26 44c0 4-4 7-9 7H33c-5 0-9-3-9-7z" fill="' + c + '"/>';
+    if (i === 5) return '<path d="M21 48c0-22 12-32 29-32s29 10 29 32l4 40c0 4-4 7-9 7H26c-5 0-9-3-9-7z" fill="' + c + '"/>';
+    return "";
+  }
+  function hairFront(i, c) {
+    switch (i) {
+      case 0: return '<path d="M28 44c-2-16 8-26 22-26s24 10 22 26c-4-8-10-12-22-12s-18 4-22 12z" fill="' + c + '"/>';
+      // 제갈선희: hair pulled up into a top bun
+      case 1: return '<circle cx="50" cy="13" r="10" fill="' + c + '"/><path d="M28 46c-2-16 8-26 22-26s24 10 22 26c-3-9-9-14-22-14s-19 5-22 14z" fill="' + c + '"/>';
+      // 정연겸: short permed hair, tight curls on top and sides
+      case 2: return '<g fill="' + c + '"><circle cx="31" cy="42" r="7"/><circle cx="31" cy="31" r="8"/><circle cx="40" cy="23" r="8"/><circle cx="50" cy="20" r="8"/><circle cx="60" cy="23" r="8"/><circle cx="69" cy="31" r="8"/><circle cx="69" cy="42" r="7"/><circle cx="41" cy="32" r="7"/><circle cx="52" cy="31" r="7"/><circle cx="62" cy="33" r="6"/></g>';
+      // 이수호: short side-parted hair
+      case 3: return '<path d="M28 46c-2-18 10-28 24-28 14 0 22 10 20 26-6-4-16-10-22-12-6 6-14 12-22 14z" fill="' + c + '"/>';
+      // 이나경: bob with straight bangs
+      case 4: return '<path d="M26 50c-2-20 8-32 24-32s26 12 24 32c-2-8-4-12-6-14-10 3-26 3-36 0-2 2-4 6-6 14z" fill="' + c + '"/>';
+      // 한다경: long hair with a centre parting
+      default: return '<path d="M26 52c-2-20 8-34 24-34s26 14 24 34c-6-4-18-12-24-20-6 8-18 16-24 20z" fill="' + c + '"/>';
+    }
+  }
+  var FEMALE = [false, true, false, false, true, true];
+  var GLASSES = [false, false, false, true, true, false];
+  function avatar(i) {
+    var face = '<circle cx="42" cy="50" r="2.4" fill="#2A211B"/><circle cx="58" cy="50" r="2.4" fill="#2A211B"/>';
+    var glasses = GLASSES[i] ? '<g fill="none" stroke="#2A211B" stroke-width="1.8"><circle cx="41.5" cy="50" r="7.5"/><circle cx="58.5" cy="50" r="7.5"/><path d="M49 50h2M34 49l-5-2M66 49l5-2"/></g>' : "";
+    var mouth = FEMALE[i]
+      ? '<path d="M44.5 58q5.5 5 11 0q-5.5 2-11 0z" fill="#D9566E" stroke="#D9566E" stroke-width="1.4" stroke-linejoin="round"/>'
+      : '<path d="M44 58q6 5 12 0" stroke="#2A211B" stroke-width="2" fill="none" stroke-linecap="round"/>';
+    return '<svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" fill="' + BG[i] + '"/>' +
+      '<path d="M14 100c2-20 18-28 36-28s34 8 36 28z" fill="' + SHIRT[i] + '"/>' +
+      hairBack(i, HAIR[i]) +
+      '<circle cx="50" cy="48" r="22" fill="' + SKIN[i] + '"/>' +
+      hairFront(i, HAIR[i]) + face +
+      '<circle cx="37" cy="57" r="4" fill="#F29B8B" opacity="' + (FEMALE[i] ? ".6" : ".35") + '"/><circle cx="63" cy="57" r="4" fill="#F29B8B" opacity="' + (FEMALE[i] ? ".6" : ".35") + '"/>' +
+      mouth + glasses + '</svg>';
+  }
+  var CROWN = '<svg class="crown" viewBox="0 0 64 40" aria-hidden="true"><path d="M4 36L8 8l16 14 8-18 8 18 16-14 4 28z" fill="#F2B531" stroke="#C98A0E" stroke-width="2" stroke-linejoin="round"/><circle cx="8" cy="8" r="3" fill="#E5532D"/><circle cx="32" cy="4" r="3" fill="#E5532D"/><circle cx="56" cy="8" r="3" fill="#E5532D"/></svg>';
+  var QUESTION = '<svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" fill="#E9DFD0"/><circle cx="50" cy="42" r="20" fill="#CDBFAA"/><path d="M14 100c2-20 18-28 36-28s34 8 36 28z" fill="#CDBFAA"/><text x="50" y="52" text-anchor="middle" font-size="26" font-weight="700" fill="#8D7D66" font-family="sans-serif">?</text></svg>';
+
+  // ---- state ----
+  var S = { db: null, user: null, dk: "", off: {}, exExists: false, draw: null, drawLoaded: false, firstDraw: true, history: [], canWrite: true, busy: false, revealing: false, spinIdx: -1, unsubs: [], timer: null };
+
+  function dateKey() { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }
+  var fmtLong = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", weekday: "long" });
+  var fmtShort = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", weekday: "short" });
+  function labelOf(key, f) { return f.format(new Date(key + "T12:00:00+09:00")); }
+
+  function randInt(n) {
+    var a = new Uint32Array(1), lim = Math.floor(4294967296 / n) * n;
+    do { crypto.getRandomValues(a); } while (a[0] >= lim);
+    return a[0] % n;
+  }
+  function pool() { return PEOPLE.filter(function (n) { return !S.off[n]; }); }
+  function drawn() { return !!(S.draw && S.draw.name); }
+
+  function setMsg(t, warn) { var m = $("msg"); m.textContent = t || ""; m.className = "msg" + (warn ? " warn" : ""); }
+
+  // ---- render (no writes in here) ----
+  function render() {
+    $("today").textContent = labelOf(S.dk, fmtLong);
+    var big = $("bigAv"), win = $("winner"), btn = $("draw");
+    var locked = drawn();
+    if (S.revealing) {
+      big.className = "avatar-lg spin"; big.innerHTML = avatar(S.spinIdx); win.className = "winner spin"; win.textContent = PEOPLE[S.spinIdx];
+      $("label").textContent = "두구두구…";
+    } else if (locked) {
+      var wi = PEOPLE.indexOf(S.draw.name);
+      big.className = "avatar-lg done"; big.innerHTML = (wi >= 0 ? avatar(wi) : QUESTION) + CROWN;
+      win.className = "winner done"; win.textContent = S.draw.name;
+      $("label").textContent = "오늘의 점심 메뉴 당번";
+    } else {
+      big.className = "avatar-lg idle"; big.innerHTML = QUESTION; win.className = "winner idle"; win.textContent = S.drawLoaded ? "아직 안 뽑았어요" : "불러오는 중…";
+      $("label").textContent = "이번 주 금요일 당번은";
+    }
+    btn.disabled = !S.db || !S.canWrite || locked || S.busy || S.revealing || !S.drawLoaded;
+    btn.textContent = S.busy ? "뽑는 중…" : (locked ? "오늘은 뽑기 완료" : "뽑기");
+
+    var ul = $("roster"); ul.innerHTML = "";
+    PEOPLE.forEach(function (n, i) {
+      var off = !!S.off[n];
+      var li = document.createElement("li"), b = document.createElement("button");
+      b.type = "button"; b.className = "person" + (locked && S.draw.name === n && !S.revealing ? " win" : "");
+      b.setAttribute("aria-pressed", String(off));
+      b.disabled = !S.db || !S.canWrite || locked || S.revealing;
+      b.innerHTML = '<span class="av">' + avatar(i) + '</span><span class="nm"></span><span class="st"></span>';
+      b.querySelector(".nm").textContent = n;
+      b.querySelector(".st").textContent = locked && S.draw.name === n && !S.revealing ? "당번" : (off ? "휴가·연차" : "참여");
+      b.addEventListener("click", function () { toggle(n); });
+      li.appendChild(b); ul.appendChild(li);
+    });
+    $("num").textContent = (locked && S.draw.pool ? S.draw.pool.length : pool().length) + "명 중에서 뽑아요";
+    $("all").disabled = !S.db || !S.canWrite || locked || S.revealing;
+    $("rosterHint").textContent = locked ? "오늘 당번이 정해져서 제외 설정은 바꿀 수 없어요." : "휴가나 연차인 사람을 눌러 제외하세요. 팀 모두에게 바로 보여요.";
+
+    var ol = $("hist"); ol.innerHTML = "";
+    S.history.forEach(function (h) {
+      var i = PEOPLE.indexOf(h.name);
+      var li = document.createElement("li");
+      li.innerHTML = '<span class="av">' + (i >= 0 ? avatar(i) : QUESTION) + '</span><span class="nm"></span><span class="dt"></span>';
+      li.querySelector(".nm").textContent = h.name;
+      li.querySelector(".dt").textContent = h.date ? labelOf(h.date, fmtShort) : "";
+      ol.appendChild(li);
+    });
+    $("histEmpty").hidden = S.history.length > 0;
+  }
+
+  // ---- shared writes ----
+  var chain = Promise.resolve();
+  function queue(fn) { chain = chain.then(fn, fn); return chain; }
+
+  function writeOff(patch) {
+    var ref = S.db.doc("excluded/" + S.dk);
+    return queue(function () {
+      return (S.exExists ? ref.update({ off: patch }) : ref.set({ off: patch })).catch(function (e) { onWriteError(e); });
+    });
+  }
+  function toggle(n) {
+    if (drawn() || !S.canWrite) return;
+    var p = {}; p[n] = !S.off[n];
+    setMsg("");
+    writeOff(p);
+  }
+  $("all").addEventListener("click", function () {
+    if (drawn() || !S.canWrite) return;
+    var p = {}; PEOPLE.forEach(function (n) { p[n] = false; });
+    setMsg(""); writeOff(p);
+  });
+
+  function onWriteError(e) {
+    var c = e && e.code;
+    if (c === "invalid_argument") { S.canWrite = false; setMsg("이 페이지는 보기 전용이에요. 기여자 권한이 있어야 뽑을 수 있어요.", true); }
+    else if (c === "resource_exhausted") setMsg("요청이 너무 많아요. 잠시 후 다시 시도해 주세요.", true);
+    else setMsg("저장하지 못했어요. 잠시 후 다시 시도해 주세요.", true);
+    render();
+  }
+
+  async function draw() {
+    if (S.busy || drawn() || !S.db || !S.canWrite) return;
+    S.busy = true; setMsg(""); render();
+    var dk = S.dk, ref = S.db.doc("draws/" + dk);
+    try {
+      var lease = await ref.acquire({ holder: "v" + Math.random().toString(36).slice(2), ttlMs: 8000 });
+      if (!lease.acquired) { setMsg("다른 사람이 지금 뽑고 있어요. 잠시만 기다려 주세요."); return; }
+      var cur = await ref.get();
+      if (cur.exists && cur.data() && cur.data().name) { setMsg("이미 오늘 당번이 정해졌어요."); return; }
+      var exs = await S.db.doc("excluded/" + dk).get();
+      var off = (exs.exists && exs.data() && exs.data().off) || {};
+      var p = PEOPLE.filter(function (n) { return !off[n]; });
+      if (p.length === 0) { setMsg("참여하는 사람이 없어요. 한 명 이상 참여로 바꿔 주세요.", true); return; }
+      var pick = p[randInt(p.length)];
+      await ref.set({ name: pick, date: dk, at: Date.now(), pool: p });
+    } catch (e) { onWriteError(e); }
+    finally { S.busy = false; render(); }
+  }
+  $("draw").addEventListener("click", draw);
+
+  // ---- reveal animation (everyone who has the page open sees it) ----
+  function confetti() {
+    if (reduce) return;
+    var box = $("confetti"); box.innerHTML = "";
+    var cols = ["#E5532D", "#F2B531", "#3E8E6B", "#3F67C9", "#C94F7C"];
+    for (var k = 0; k < 36; k++) {
+      var s = document.createElement("i");
+      s.style.left = Math.random() * 100 + "%"; s.style.background = cols[k % cols.length];
+      s.style.animationDuration = 1.6 + Math.random() * 1.6 + "s"; s.style.animationDelay = Math.random() * 0.5 + "s";
+      box.appendChild(s);
+    }
+    setTimeout(function () { box.innerHTML = ""; }, 3800);
+  }
+  function reveal() {
+    var target = PEOPLE.indexOf(S.draw.name);
+    if (reduce || target < 0) { render(); confetti(); return; }
+    S.revealing = true;
+    var steps = 20, i = 0, delay = 70;
+    (function tick() {
+      if (i >= steps) { S.revealing = false; render(); confetti(); return; }
+      var next; do { next = randInt(PEOPLE.length); } while (next === S.spinIdx);
+      S.spinIdx = next; render(); i++; delay += 10; setTimeout(tick, delay);
+    })();
+  }
+
+  // ---- subscriptions ----
+  function clearDaySubs() { S.unsubs.forEach(function (u) { try { u(); } catch (e) {} }); S.unsubs = []; }
+  function subscribeDay() {
+    clearDaySubs();
+    S.dk = dateKey(); S.off = {}; S.exExists = false; S.draw = null; S.drawLoaded = false; S.firstDraw = true; S.revealing = false;
+    render();
+    var dk = S.dk;
+    S.unsubs.push(S.db.doc("excluded/" + dk).onSnapshot(function (snap) {
+      if (dk !== S.dk) return;
+      S.exExists = snap.exists;
+      var d = snap.exists ? snap.data() : null;
+      S.off = (d && d.off) ? Object.assign({}, d.off) : {};
+      render();
+    }, onSubError));
+    S.unsubs.push(S.db.doc("draws/" + dk).onSnapshot(function (snap) {
+      if (dk !== S.dk) return;
+      var prev = drawn();
+      S.draw = snap.exists ? snap.data() : null;
+      var first = S.firstDraw; S.firstDraw = false; S.drawLoaded = true;
+      clearTimeout(S.timer);
+      if (!first && !prev && drawn()) reveal(); else render();
+    }, onSubError));
+  }
+  function onSubError(e) {
+    if (e && e.code === "revoked") setMsg("이 페이지에 접근할 수 없게 됐어요.", true);
+    else setMsg("저장소에 연결하지 못했어요. 새로고침해 주세요.", true);
+    S.drawLoaded = true; render();
+  }
+
+  // Fallback store used outside claude.ai (e.g. GitHub Pages): same calls as the shared database, kept in this browser only
+  function localDb() {
+    var P = "lunch-local:", subs = {}, colSubs = {};
+    function read(p) { try { var v = localStorage.getItem(P + p); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+    function write(p, v) { try { localStorage.setItem(P + p, JSON.stringify(v)); } catch (e) {} }
+    function snap(p) { var d = read(p); return { id: p.split("/").pop(), exists: !!d, data: function () { return d || undefined; } }; }
+    function colDocs(c) {
+      var out = [];
+      try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k.indexOf(P + c + "/") === 0) { var v = JSON.parse(localStorage.getItem(k)); if (v) out.push(v); } } } catch (e) {}
+      out.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+      return { docs: out.slice(0, 8).map(function (v) { return { data: function () { return v; } }; }) };
+    }
+    function notify(p) {
+      (subs[p] || []).forEach(function (f) { f(snap(p)); });
+      var c = p.split("/")[0];
+      (colSubs[c] || []).forEach(function (f) { f(colDocs(c)); });
+    }
+    function merge(a, b) {
+      var o = Object.assign({}, a || {});
+      Object.keys(b).forEach(function (k) { o[k] = (b[k] && typeof b[k] === "object" && !Array.isArray(b[k])) ? merge(o[k], b[k]) : b[k]; });
+      return o;
+    }
+    return {
+      doc: function (p) {
+        return {
+          get: function () { return Promise.resolve(snap(p)); },
+          set: function (d) { write(p, d); notify(p); return Promise.resolve(); },
+          update: function (d) { write(p, merge(read(p), d)); notify(p); return Promise.resolve(); },
+          acquire: function () { return Promise.resolve({ acquired: true }); },
+          onSnapshot: function (fn) { (subs[p] = subs[p] || []).push(fn); setTimeout(function () { fn(snap(p)); }, 0); return function () { subs[p] = (subs[p] || []).filter(function (f) { return f !== fn; }); }; }
+        };
+      },
+      collection: function (c) {
+        var q = { orderBy: function () { return q; }, limit: function () { return q; },
+          onSnapshot: function (fn) { (colSubs[c] = colSubs[c] || []).push(fn); setTimeout(function () { fn(colDocs(c)); }, 0); return function () {}; } };
+        return q;
+      }
+    };
+  }
+  async function init() {
+    $("today").textContent = labelOf(dateKey(), fmtLong);
+    S.dk = dateKey(); render();
+    var db = null, user = null;
+    try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch (e) { db = null; }
+    try { user = window.claude && window.claude.use ? await window.claude.use("user") : null; } catch (e) { user = null; }
+    var localMode = false; if (!db) { db = localDb(); localMode = true; }
+    S.db = db; S.user = user;
+    try { if (user && user.can) { var w = user.can("data.write"); if (w === false) S.canWrite = false; } } catch (e) {}
+    if (localMode) setMsg("이 브라우저에만 저장돼요. 팀이 같은 기록을 보려면 claude.ai 링크를 쓰세요.");
+    if (!S.canWrite) setMsg("보기 전용이에요. 뽑거나 제외하려면 기여자 권한이 필요해요.");
+
+    S.timer = setTimeout(function () { if (!S.drawLoaded) setMsg("저장소 응답이 느려요. 잠시만 기다려 주세요."); }, 10000);
+    subscribeDay();
+    S.unsubs.length; // day subscriptions are re-created when the date changes
+    db.collection("draws").orderBy("date", "desc").limit(8).onSnapshot(function (snap) {
+      S.history = snap.docs.map(function (d) { return d.data(); }).filter(function (d) { return d && d.name; });
+      render();
+    }, function () {});
+    setInterval(function () { if (S.db && dateKey() !== S.dk) subscribeDay(); }, 30000);
+  }
+  init();
+})();
+</script>
+</body>
+</html>
