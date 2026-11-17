@@ -1,0 +1,298 @@
+<title>포모도로 타이머</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: one centered work surface — dial on top, controls below, settings folded underneath */
+:root {
+  --bg: #EEF0EE;
+  --surface: #FFFFFF;
+  --fg: #1C1F1D;
+  --muted: #67706B;
+  --line: #D5DAD6;
+  --focus: #D2462C;
+  --short: #3E8A64;
+  --long: #3A6FB0;
+  --on-accent: #FFFFFF;
+  --font-display: "Space Grotesk", "IBM Plex Sans KR", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans KR", "Malgun Gothic", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121514; --surface: #1B1F1D; --fg: #E9ECEA; --muted: #98A19C; --line: #2E3431;
+    --focus: #F06A4E; --short: #5DBA89; --long: #6D9EDB; --on-accent: #121514;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121514; --surface: #1B1F1D; --fg: #E9ECEA; --muted: #98A19C; --line: #2E3431;
+  --focus: #F06A4E; --short: #5DBA89; --long: #6D9EDB; --on-accent: #121514;
+  color-scheme: dark;
+}
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 48px;
+}
+.app { --accent: var(--focus); max-width: 440px; margin: 0 auto; display: grid; gap: 24px; }
+.app[data-phase="short"] { --accent: var(--short); }
+.app[data-phase="long"] { --accent: var(--long); }
+
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--font-display); font-size: 20px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.today { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.today b { color: var(--fg); font-weight: 600; }
+
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.tabs button { font: inherit; font-size: 14px; border: 0; background: transparent; color: var(--muted); padding: 9px 4px; border-radius: 8px; cursor: pointer; }
+.tabs button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.tabs button:hover:not([aria-pressed="true"]) { color: var(--fg); }
+
+.dial { position: relative; width: 100%; max-width: 340px; aspect-ratio: 1; margin: 0 auto; }
+.dial svg { width: 100%; height: 100%; display: block; }
+.ticks line { stroke: var(--line); stroke-width: 1.5; }
+.ticks line.major { stroke: var(--muted); stroke-width: 2; }
+.track { fill: none; stroke: var(--line); stroke-width: 10; }
+.progress { fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset .3s linear, stroke .3s; }
+.readout { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 6px; }
+.time { font-family: var(--font-display); font-weight: 600; font-size: clamp(56px, 18vw, 76px); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.phase-label { font-size: 14px; color: var(--muted); }
+.rounds { display: flex; justify-content: center; gap: 8px; margin-top: 6px; }
+.rounds span { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent); }
+.rounds span.done { background: var(--accent); }
+
+.controls { display: flex; justify-content: center; align-items: center; gap: 16px; }
+.btn { font: inherit; cursor: pointer; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); display: inline-flex; align-items: center; justify-content: center; }
+.btn.side { width: 52px; height: 52px; }
+.btn.side svg { width: 20px; height: 20px; }
+.btn.main { min-width: 148px; height: 60px; padding: 0 28px; font-size: 17px; font-weight: 600; background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn:hover { filter: brightness(1.05); }
+.btn:focus-visible, .tabs button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.keys { text-align: center; font-size: 12px; color: var(--muted); }
+kbd { font-family: var(--font-display); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; background: var(--surface); }
+
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+summary { cursor: pointer; padding: 14px 16px; font-weight: 500; list-style: none; display: flex; justify-content: space-between; }
+summary::after { content: "+"; color: var(--muted); }
+details[open] summary::after { content: "−"; }
+.settings { display: grid; gap: 14px; padding: 4px 16px 16px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.row label { font-size: 14px; }
+.row .hint { display: block; font-size: 12px; color: var(--muted); }
+.num { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.num input { width: 64px; font: inherit; font-size: 15px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) { .progress { transition: none; } }
+</style>
+
+<main class="app" id="app" data-phase="focus">
+  <header>
+    <h1>포모도로</h1>
+    <div class="today">오늘 완료 <b id="todayCount">0</b>회 · <b id="todayMin">0</b>분 집중</div>
+  </header>
+
+  <div class="tabs" role="group" aria-label="단계 선택">
+    <button type="button" id="tab-focus" data-phase="focus" aria-pressed="true">집중</button>
+    <button type="button" id="tab-short" data-phase="short" aria-pressed="false">짧은 휴식</button>
+    <button type="button" id="tab-long" data-phase="long" aria-pressed="false">긴 휴식</button>
+  </div>
+
+  <div class="dial">
+    <svg viewBox="0 0 200 200" aria-hidden="true">
+      <g class="ticks" id="ticks"></g>
+      <circle class="track" cx="100" cy="100" r="78"></circle>
+      <circle class="progress" id="progress" cx="100" cy="100" r="78" transform="rotate(-90 100 100)"></circle>
+    </svg>
+    <div class="readout">
+      <div class="time" id="time" role="timer" aria-live="off">25:00</div>
+      <div class="phase-label" id="phaseLabel">집중 · 1번째 뽀모도로</div>
+      <div class="rounds" id="rounds" aria-label="이번 사이클 진행"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn side" type="button" id="resetBtn" aria-label="처음으로" title="처음으로 (R)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+    </button>
+    <button class="btn main" type="button" id="startBtn">시작</button>
+    <button class="btn side" type="button" id="skipBtn" aria-label="다음 단계로" title="다음 단계로 (S)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l10 7-10 7z"/><path d="M19 5v14"/></svg>
+    </button>
+  </div>
+  <div class="keys"><kbd>Space</kbd> 시작/일시정지 · <kbd>R</kbd> 처음으로 · <kbd>S</kbd> 건너뛰기</div>
+
+  <details>
+    <summary>설정</summary>
+    <div class="settings">
+      <div class="row"><label for="set-focus">집중 시간</label><span class="num"><input id="set-focus" type="number" min="1" max="120" value="25">분</span></div>
+      <div class="row"><label for="set-short">짧은 휴식</label><span class="num"><input id="set-short" type="number" min="1" max="60" value="5">분</span></div>
+      <div class="row"><label for="set-long">긴 휴식</label><span class="num"><input id="set-long" type="number" min="1" max="90" value="15">분</span></div>
+      <div class="row"><label for="set-every">긴 휴식 간격<span class="hint">이 횟수만큼 집중하면 긴 휴식</span></label><span class="num"><input id="set-every" type="number" min="2" max="8" value="4">회</span></div>
+      <div class="row"><label for="set-auto">다음 단계 자동 시작</label><input id="set-auto" type="checkbox"></div>
+      <div class="row"><label for="set-sound">종료 알림음</label><input id="set-sound" type="checkbox" checked></div>
+    </div>
+  </details>
+</main>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const LABEL = { focus: "집중", short: "짧은 휴식", long: "긴 휴식" };
+  const R = 78, C = 2 * Math.PI * R;
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const todayKey = () => "pomo-day-" + new Date().toISOString().slice(0, 10);
+
+  const settings = Object.assign({ focus: 25, short: 5, long: 15, every: 4, auto: false, sound: true }, store.get("pomo-settings", {}));
+  let day = store.get(todayKey(), { count: 0, minutes: 0 });
+
+  const s = { phase: "focus", round: 0, running: false, endAt: 0, remaining: settings.focus * 60000, total: settings.focus * 60000 };
+  let timer = null, wakeLock = null, audio = null;
+
+  // ticks like a kitchen timer: 60 marks, every 5th long
+  const ticks = $("ticks");
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * 2 * Math.PI, major = i % 5 === 0;
+    const r1 = major ? 88 : 91, r2 = 96;
+    const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    l.setAttribute("x1", 100 + r1 * Math.sin(a)); l.setAttribute("y1", 100 - r1 * Math.cos(a));
+    l.setAttribute("x2", 100 + r2 * Math.sin(a)); l.setAttribute("y2", 100 - r2 * Math.cos(a));
+    if (major) l.setAttribute("class", "major");
+    ticks.appendChild(l);
+  }
+  const prog = $("progress");
+  prog.style.strokeDasharray = C;
+
+  // settings inputs
+  ["focus", "short", "long", "every"].forEach((k) => {
+    const el = $("set-" + k); el.value = settings[k];
+    el.addEventListener("change", () => {
+      const v = Math.round(Number(el.value));
+      const min = Number(el.min), max = Number(el.max);
+      settings[k] = isFinite(v) ? Math.min(max, Math.max(min, v)) : settings[k];
+      el.value = settings[k]; store.set("pomo-settings", settings);
+      if (k === "every") { s.round = s.round % settings.every; render(); }
+      else if (!s.running && s.phase === k) setPhase(k);
+    });
+  });
+  $("set-auto").checked = settings.auto;
+  $("set-sound").checked = settings.sound;
+  $("set-auto").addEventListener("change", (e) => { settings.auto = e.target.checked; store.set("pomo-settings", settings); });
+  $("set-sound").addEventListener("change", (e) => { settings.sound = e.target.checked; store.set("pomo-settings", settings); });
+
+  function fmt(ms) {
+    const t = Math.max(0, Math.ceil(ms / 1000));
+    return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0");
+  }
+
+  function render() {
+    const app = $("app");
+    app.dataset.phase = s.phase;
+    document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.phase === s.phase)));
+    const t = fmt(s.remaining);
+    $("time").textContent = t;
+    const frac = s.total ? s.remaining / s.total : 0;
+    prog.style.strokeDashoffset = C * (1 - frac);
+    $("phaseLabel").textContent = s.phase === "focus" ? `집중 · ${s.round + 1}번째 뽀모도로` : LABEL[s.phase];
+    $("startBtn").textContent = s.running ? "일시정지" : (s.remaining < s.total ? "계속" : "시작");
+    const rounds = $("rounds"); rounds.innerHTML = "";
+    for (let i = 0; i < settings.every; i++) {
+      const d = document.createElement("span");
+      if (i < s.round) d.className = "done";
+      rounds.appendChild(d);
+    }
+    $("todayCount").textContent = day.count;
+    $("todayMin").textContent = day.minutes;
+    document.title = s.running ? `${t} · ${LABEL[s.phase]}` : "포모도로 타이머";
+  }
+
+  function setPhase(p) {
+    stop();
+    s.phase = p; s.total = s.remaining = settings[p] * 60000;
+    render();
+  }
+
+  function tick() {
+    s.remaining = s.endAt - Date.now();
+    if (s.remaining <= 0) { s.remaining = 0; complete(); return; }
+    render();
+  }
+
+  async function start() {
+    if (s.running) return;
+    ensureAudio();
+    s.running = true; s.endAt = Date.now() + s.remaining;
+    timer = setInterval(tick, 250);
+    try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { wakeLock = null; }
+    render();
+  }
+
+  function stop() {
+    if (s.running) s.remaining = Math.max(0, s.endAt - Date.now());
+    s.running = false; clearInterval(timer); timer = null;
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  }
+
+  function complete() {
+    stop();
+    if (settings.sound) chime();
+    if (s.phase === "focus") {
+      day.count += 1; day.minutes += settings.focus; store.set(todayKey(), day);
+      s.round += 1;
+      if (s.round >= settings.every) { s.round = 0; setPhase("long"); }
+      else setPhase("short");
+    } else {
+      setPhase("focus");
+    }
+    if (settings.auto) start();
+  }
+
+  function skip() {
+    if (s.phase === "focus") {
+      s.round += 1;
+      if (s.round >= settings.every) { s.round = 0; setPhase("long"); } else setPhase("short");
+    } else setPhase("focus");
+  }
+
+  function ensureAudio() {
+    try { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === "suspended") audio.resume(); } catch (e) { audio = null; }
+  }
+  function chime() {
+    if (!audio) return;
+    const now = audio.currentTime;
+    [0, 0.28, 0.56].forEach((off, i) => {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = "sine"; o.frequency.value = i === 2 ? 1046.5 : 880;
+      g.gain.setValueAtTime(0.0001, now + off);
+      g.gain.exponentialRampToValueAtTime(0.25, now + off + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.25);
+      o.connect(g).connect(audio.destination); o.start(now + off); o.stop(now + off + 0.3);
+    });
+  }
+
+  $("startBtn").addEventListener("click", () => { s.running ? (stop(), render()) : start(); });
+  $("resetBtn").addEventListener("click", () => setPhase(s.phase));
+  $("skipBtn").addEventListener("click", skip);
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => setPhase(b.dataset.phase)));
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, textarea, select") || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.code === "Space") { e.preventDefault(); s.running ? (stop(), render()) : start(); }
+    else if (e.key === "r" || e.key === "R") setPhase(s.phase);
+    else if (e.key === "s" || e.key === "S") skip();
+  });
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState === "visible" && s.running && !wakeLock && navigator.wakeLock) {
+      try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+    }
+  });
+
+  setPhase("focus");
+})();
+</script>
