@@ -195,6 +195,9 @@ h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0; letter-s
   var BG = ["#FFD9A8", "#BFE3D0", "#C9D8F5", "#F9C6C0", "#E4D2F2", "#FBE6A2"];
   var SHIRT = ["#E5532D", "#3E8E6B", "#3F67C9", "#C94F7C", "#7B4FC9", "#D79A1E"];
   var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Google Apps Script web app URL (the shared Google Sheet). Leave empty to keep records in this browser only.
+  var SHEET_URL = "https://script.google.com/macros/s/AKfycbzpVmDwWj9n3b5oSKrfoxLmYDBLwhnB1t-ojBf9G48JjHw9NX2b9xSvra-toigrNr-k/exec";
+  var REMOTE = !!SHEET_URL;
 
   // ---- avatars (inline SVG, no external images) ----
   function hairBack(i, c) {
@@ -318,12 +321,15 @@ h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0; letter-s
     if (drawn() || !S.canWrite) return;
     var p = {}; p[n] = !S.off[n];
     setMsg("");
+    if (REMOTE) { remoteOff(n, p[n]); return; }
     writeOff(p);
   }
   $("all").addEventListener("click", function () {
     if (drawn() || !S.canWrite) return;
     var p = {}; PEOPLE.forEach(function (n) { p[n] = false; });
-    setMsg(""); writeOff(p);
+    setMsg("");
+    if (REMOTE) { remoteReset(); return; }
+    writeOff(p);
   });
 
   function onWriteError(e) {
@@ -337,6 +343,7 @@ h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0; letter-s
   async function draw() {
     if (S.busy || drawn() || !S.db || !S.canWrite) return;
     S.busy = true; setMsg(""); render();
+    if (REMOTE) return remoteDraw();
     var dk = S.dk, ref = S.db.doc("draws/" + dk);
     try {
       var lease = await ref.acquire({ holder: "v" + Math.random().toString(36).slice(2), ttlMs: 8000 });
@@ -447,9 +454,65 @@ h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0; letter-s
       }
     };
   }
+  // ---- shared store: a Google Sheet behind an Apps Script web app (no login needed to view or use) ----
+  function api(params) {
+    var u = new URL(SHEET_URL);
+    Object.keys(params).forEach(function (k) { u.searchParams.set(k, params[k]); });
+    return fetch(u.toString()).then(function (r) { return r.json(); });
+  }
+  function applyState(st) {
+    if (!st || typeof st.date !== "string") return;
+    var prev = drawn();
+    S.off = st.off || {};
+    S.draw = st.draw || null;
+    S.history = st.history || [];
+    var first = S.firstDraw; S.firstDraw = false; S.drawLoaded = true;
+    clearTimeout(S.timer);
+    if (S.connErr) { S.connErr = false; setMsg(""); }
+    if (!first && !prev && drawn()) reveal(); else render();
+  }
+  function handleResult(r) {
+    if (r && r.ok === false) {
+      setMsg(r.error === "locked" ? "이미 오늘 당번이 정해졌어요." : r.error === "empty" ? "참여하는 사람이 없어요. 한 명 이상 참여로 바꿔 주세요." : "처리하지 못했어요. 다시 시도해 주세요.", true);
+    }
+    applyState(r);
+  }
+  function netErr() { S.connErr = true; setMsg("저장소에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.", true); S.drawLoaded = true; render(); }
+  function remoteWrite(fn) {
+    S.pending = (S.pending || 0) + 1;
+    return queue(function () { return fn().then(handleResult).catch(netErr).then(function () { S.pending--; }); });
+  }
+  function remoteOff(n, value) {
+    S.off[n] = value; render();
+    remoteWrite(function () { return api({ action: "off", date: S.dk, name: n, value: value ? "1" : "0" }); });
+  }
+  function remoteReset() {
+    PEOPLE.forEach(function (n) { S.off[n] = false; }); render();
+    remoteWrite(function () { return api({ action: "reset", date: S.dk }); });
+  }
+  async function remoteDraw() {
+    try { handleResult(await api({ action: "draw", date: S.dk })); }
+    catch (e) { netErr(); }
+    finally { S.busy = false; render(); }
+  }
+  function refresh() {
+    if (S.busy || S.pending || S.revealing) return Promise.resolve();
+    var dk = dateKey();
+    if (dk !== S.dk) { S.dk = dk; S.off = {}; S.draw = null; S.drawLoaded = false; S.firstDraw = true; render(); }
+    return api({ action: "get", date: dk }).then(applyState).catch(netErr);
+  }
+
   async function init() {
     $("today").textContent = labelOf(dateKey(), fmtLong);
     S.dk = dateKey(); render();
+    if (REMOTE) {
+      S.db = {}; S.canWrite = true;
+      S.timer = setTimeout(function () { if (!S.drawLoaded) setMsg("저장소 응답이 느려요. 잠시만 기다려 주세요."); }, 10000);
+      refresh();
+      setInterval(refresh, 15000);
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) refresh(); });
+      return;
+    }
     var db = null, user = null;
     try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch (e) { db = null; }
     try { user = window.claude && window.claude.use ? await window.claude.use("user") : null; } catch (e) { user = null; }
